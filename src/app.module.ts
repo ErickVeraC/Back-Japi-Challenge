@@ -17,7 +17,7 @@ import { ReservationsModule } from './reservations/reservations.module';
     EventsModule,
     ReservationsModule,
   ],
-  controllers: [AppController, ReservationsController],
-  providers: [AppService, ReservationsService],
+  controllers: [AppController],
+  providers: [AppService],
 })
 export class AppModule {}
