@@ -2,7 +2,6 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -18,33 +17,51 @@ export class ReservationsService {
   ) {}
 
   async reserve(eventId: string, userId: string): Promise<Reservation> {
-    const event = await this.eventModel.findById(eventId);
-    if (!event) throw new NotFoundException('Event not found');
+    const session = await this.reservationModel.db.startSession();
+    try {
+      await session.withTransaction(async () => {
+        const event = await this.eventModel.findById(eventId).session(session);
+        if (!event) throw new NotFoundException('Event not found');
 
-    if (event.availableTickets <= 0) {
-      throw new ConflictException('No available tickets');
+        if (event.availableTickets <= 0) {
+          throw new ConflictException('No available tickets');
+        }
+
+        const existing = await this.reservationModel
+          .findOne({
+            user: userId,
+            event: eventId,
+          })
+          .session(session);
+
+        if (existing) {
+          throw new ConflictException('You already reserved this event');
+        }
+
+        await this.reservationModel.create(
+          [
+            {
+              user: userId,
+              event: eventId,
+            },
+          ],
+          { session },
+        );
+
+        event.availableTickets -= 1;
+        await event.save({ session });
+      });
+      session.endSession();
+
+      return await this.reservationModel.findOne({
+        user: userId,
+        event: eventId,
+      });
+    } catch (error) {
+      await session.abortTransaction();
+      session.endSession();
+      throw error;
     }
-
-    const existing = await this.reservationModel.findOne({
-      user: userId,
-      event: eventId,
-    });
-
-    if (existing) {
-      throw new ConflictException('You already reserved this event');
-    }
-
-    //For reserving
-    const reservation = await this.reservationModel.create({
-      user: userId,
-      event: eventId,
-    });
-
-    // Reduce available tickets
-    event.availableTickets -= 1;
-    await event.save();
-
-    return reservation;
   }
 
   async cancel(eventId: string, userId: string): Promise<void> {
@@ -55,10 +72,8 @@ export class ReservationsService {
 
     if (!reservation) throw new NotFoundException('Reservation not found');
 
-    //Deleting reservation
     await reservation.deleteOne();
 
-    //Increase tickets
     await this.eventModel.findByIdAndUpdate(eventId, {
       $inc: { availableTickets: 1 },
     });
