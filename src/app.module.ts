@@ -6,7 +6,11 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
-  imports: [MongooseModule.forRoot(process.env.MONGO_URI), AuthModule, UsersModule],
+  imports: [
+    MongooseModule.forRoot(process.env.MONGO_URI),
+    AuthModule,
+    UsersModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })
